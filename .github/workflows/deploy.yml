@@ -1,0 +1,64 @@
+
+name: Laravel CI CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy Laravel Application
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          APP_PATH: ${{ secrets.APP_PATH }}
+
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            "$EC2_USER@$EC2_HOST" \
+            "APP_PATH='$APP_PATH' bash -s" <<'EOF'
+
+          set -e
+
+          cd "$APP_PATH"
+
+          git pull --ff-only origin main
+
+          composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+
+          npm ci
+
+          npm run build
+
+          php artisan migrate --force
+
+          php artisan optimize:clear
+
+          php artisan config:cache
+
+          sudo chown -R ubuntu:www-data storage bootstrap/cache
+          sudo chmod -R ug+rwX storage bootstrap/cache
+
+          echo "Deployment Successful!"
+
+          EOF
+
