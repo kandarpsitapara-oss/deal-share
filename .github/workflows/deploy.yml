@@ -1,3 +1,4 @@
+
 name: Laravel CI CD Pipeline
 
 on:
@@ -15,62 +16,27 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-        
-      - name: Test EC2 Port 22
-        env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-        run: |
-          echo "Testing SSH port 22..."
-          timeout 10 bash -c "echo > /dev/tcp/$EC2_HOST/22"
-          echo "EC2 Port 22 is reachable!"
-
-
       - name: Setup SSH
         env:
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
           EC2_HOST: ${{ secrets.EC2_HOST }}
         run: |
-            mkdir -p ~/.ssh
-            chmod 700 ~/.ssh
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
 
-            printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/deploy_key
-            chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
 
-             ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
+          ssh-keyscan -T 10 -H "$EC2_HOST" >> ~/.ssh/known_hosts
 
-      - name: Deploy Laravel Application
+      - name: Test SSH Connection
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
-          APP_PATH: ${{ secrets.APP_PATH }}
-
         run: |
           ssh -i ~/.ssh/deploy_key \
+            -o BatchMode=yes \
+            -o ConnectTimeout=10 \
             "$EC2_USER@$EC2_HOST" \
-            "APP_PATH='$APP_PATH' bash -s" <<'EOF'
-
-          set -e
-
-          cd "$APP_PATH"
-
-          git pull --ff-only origin main
-
-          composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
-
-          npm ci
-
-          npm run build
-
-          php artisan migrate --force
-
-          php artisan optimize:clear
-
-          php artisan config:cache
-
-          sudo chown -R ubuntu:www-data storage bootstrap/cache
-          sudo chmod -R ug+rwX storage bootstrap/cache
-
-          echo "Deployment Successful!"
-
-          EOF
+            "echo 'SSH Connection Successful!' && hostname && whoami"
 
